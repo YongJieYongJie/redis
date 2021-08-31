@@ -3,6 +3,7 @@ package redis_test
 import (
 	"bytes"
 	"fmt"
+	"math/rand"
 	"net"
 	"strconv"
 	"sync/atomic"
@@ -344,4 +345,34 @@ var _ = Describe("cluster races", func() {
 
 func bigVal() []byte {
 	return bytes.Repeat([]byte{'*'}, 1<<17) // 128kb
+}
+
+func TestDataRaceRecreate(t *testing.T) {
+	redisCli := redis.NewClient(&redis.Options{})
+	fmt.Printf("Connected to redis: %v\n", redisCli)
+
+	pubSub := redisCli.Subscribe()
+	ch := pubSub.Channel()
+
+	go func() {
+		for msg := range ch {
+			_ = msg
+		}
+	}()
+
+	for i := 0; i < 100; i++ {
+		redisCli.Publish("msg", fmt.Sprintf("Subscribing to %v", i))
+		pubSub.Subscribe(fmt.Sprint(i))
+		redisCli.Publish("msg", fmt.Sprintf("Subscribed to %v", i))
+	}
+
+	go func() {
+		for {
+			i := rand.Intn(100)
+			pubSub.Unsubscribe(fmt.Sprint(i))
+			time.Sleep(time.Second)
+		}
+	}()
+
+	time.Sleep(9 * time.Minute)
 }

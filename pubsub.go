@@ -422,7 +422,8 @@ func (c *PubSub) channel(size int) <-chan *Message {
 }
 
 func (c *PubSub) initChannel(size int) {
-	const timeout = 30 * time.Second
+	const timeout = time.Second
+	fmt.Println("Timeout changed to 1 second to increase likelihood of data race")
 
 	c.ch = make(chan *Message, size)
 	c.ping = make(chan struct{}, 1)
@@ -434,6 +435,7 @@ func (c *PubSub) initChannel(size int) {
 		var errCount int
 		for {
 			msg, err := c.Receive()
+			fmt.Printf("msg: %v | err: %v\n", msg, err)
 			if err != nil {
 				if err == pool.ErrClosed {
 					close(c.ch)
@@ -486,11 +488,13 @@ func (c *PubSub) initChannel(size int) {
 			timer.Reset(timeout)
 			select {
 			case <-c.ping:
+				// fmt.Println("Received ping")
 				healthy = true
 				if !timer.Stop() {
 					<-timer.C
 				}
 			case <-timer.C:
+				fmt.Println("Manually pinging")
 				pingErr := c.Ping()
 				if healthy {
 					healthy = false
